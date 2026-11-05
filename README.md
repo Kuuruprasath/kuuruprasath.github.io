@@ -51,6 +51,9 @@ also limit the form to your domain (`kuuruprasath.github.io`) to cut down on spa
 - **Resume**: replace the PDFs in `assets/resume/` and keep the same file names, so the buttons keep working.
 - **Text**: edit `index.html`. Each section is marked with a comment like `<!-- ===== EXPERIENCE ===== -->`.
 - After big content changes, update `<lastmod>` in `sitemap.xml` and `dateModified` in `index.html`.
+- If you change `style.css` or `main.js`, also change the `?v=...` at the end of their links in `index.html`
+  (for example `?v=20261106b` → `?v=20261201`). That makes visitors' browsers load the new version
+  instead of an old saved copy.
 
 ## Notes
 
