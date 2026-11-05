@@ -361,37 +361,98 @@
   }
 
   /* ---------- Case-study dialogs ---------- */
+  // Open: show the dialog in its hidden start state, wait two frames so the browser has
+  // painted it, then add .is-open so CSS glides everything in. Close: swap to .is-closing,
+  // wait for the panel's slide-out to finish, then really close it.
   let lastTrigger = null;
-  function openCase(id) {
-    const dlg = $("#case-" + id);
-    if (!dlg || dlg.open) return;
-    lastTrigger = document.activeElement;
-    $(".case__inner", dlg).setAttribute("data-lenis-prevent", "");
-    $(".case__inner", dlg).scrollTop = 0;
-    dlg.showModal();
+  const closeTimers = new WeakMap();
+
+  // Lock page scrolling without the page jumping sideways when the scrollbar disappears:
+  // measure how much wider the page got and pad it back by exactly that much.
+  const lockScroll = () => {
+    const before = root.clientWidth;
     lenis && lenis.stop();
     root.style.overflow = "hidden";
+    const gap = root.clientWidth - before;
+    if (gap > 0) {
+      root.style.paddingRight = gap + "px";
+      header.style.right = gap + "px";
+    }
+  };
+  const unlockScroll = () => {
+    root.style.overflow = "";
+    root.style.paddingRight = "";
+    header.style.right = "";
+    lenis && lenis.start();
+  };
+
+  // Load a case study's images early (on hover/focus of its card) and fade them in once ready
+  function prepImages(dlg) {
+    $$(".case__gallery img", dlg).forEach((img) => {
+      if (img.dataset.prepped) return;
+      img.dataset.prepped = "1";
+      img.loading = "eager";
+      const mark = () => img.classList.add("is-loaded");
+      if (img.complete && img.naturalWidth) mark();
+      else { img.addEventListener("load", mark, { once: true }); img.addEventListener("error", mark, { once: true }); }
+    });
   }
+
+  function openCase(id) {
+    const dlg = $("#case-" + id);
+    if (!dlg) return;
+    if (dlg.open && !dlg.classList.contains("is-closing")) return;
+    clearTimeout(closeTimers.get(dlg));
+    const inner = $(".case__inner", dlg);
+    prepImages(dlg);
+    if (!dlg.open) {
+      lastTrigger = document.activeElement;
+      inner.scrollTop = 0;
+      dlg.showModal();
+    }
+    dlg.classList.remove("is-closing");
+    if (root.style.overflow !== "hidden") lockScroll();
+    requestAnimationFrame(() => requestAnimationFrame(() => dlg.classList.add("is-open")));
+  }
+
   function closeCase(dlg) {
     if (!dlg.open || dlg.classList.contains("is-closing")) return;
+    const inner = $(".case__inner", dlg);
+    dlg.classList.remove("is-open");
     dlg.classList.add("is-closing");
+    let finished = false;
     const done = () => {
+      if (finished || !dlg.classList.contains("is-closing")) return;
+      finished = true;
+      inner.removeEventListener("transitionend", onEnd);
       dlg.classList.remove("is-closing");
       dlg.close();
-      root.style.overflow = "";
-      lenis && lenis.start();
+      unlockScroll();
       lastTrigger && lastTrigger.focus({ preventScroll: true });
     };
-    let finished = false;
-    const once = () => { if (!finished) { finished = true; done(); } };
-    $(".case__inner", dlg).addEventListener("animationend", once, { once: true });
-    setTimeout(once, 600);
+    const onEnd = (e) => { if (e.target === inner && e.propertyName === "transform") done(); };
+    inner.addEventListener("transitionend", onEnd);
+    closeTimers.set(dlg, setTimeout(done, 800));
   }
-  $$("[data-open]").forEach((btn) => btn.addEventListener("click", () => openCase(btn.dataset.open)));
+
   $$(".case").forEach((dlg) => {
+    const inner = $(".case__inner", dlg);
+    inner.setAttribute("data-lenis-prevent", "");
+    Array.from(inner.children).forEach((el, i) => el.style.setProperty("--i", Math.min(i, 9)));
+    const veil = document.createElement("div");
+    veil.className = "case__veil";
+    dlg.prepend(veil);
     $(".case__close", dlg).addEventListener("click", () => closeCase(dlg));
     dlg.addEventListener("cancel", (e) => { e.preventDefault(); closeCase(dlg); });
-    dlg.addEventListener("click", (e) => { if (e.target === dlg) closeCase(dlg); });
+    dlg.addEventListener("click", (e) => { if (e.target === dlg || e.target === veil) closeCase(dlg); });
+  });
+  $$("[data-open]").forEach((btn) => {
+    const dlg = $("#case-" + btn.dataset.open);
+    const warm = () => dlg && prepImages(dlg);
+    btn.addEventListener("pointerenter", warm, { once: true });
+    btn.addEventListener("focus", warm, { once: true });
+    btn.addEventListener("touchstart", warm, { once: true, passive: true });
+    btn.addEventListener("click", () => openCase(btn.dataset.open));
   });
 
   /* ---------- Contact form (Formspree) ---------- */
